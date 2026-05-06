@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>RC Flying Forecast</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#f0f2f8;
+  --card:#ffffff;
+  --card2:#f7f9ff;
+  --border:#d0d8ee;
+  --navy:#1e2a50;
+  --blue:#2255cc;
+  --green:#007a30;
+  --green-bg:#e6f7ed;
+  --amber:#b86000;
+  --amber-bg:#fff7e0;
+  --red:#cc0022;
+  --red-bg:#ffe8ec;
+  --text:#1a2040;
+  --muted:#5060a0;
+  --dim:#8090b8;
+  --success:#00aa44;
+  --warn:#dd8800;
+  --fail:#dd1133;
+}
+html,body{min-height:100%;background:var(--bg);font-family:'Inter',system-ui,sans-serif;color:var(--text)}
+body{padding:0 0 40px;max-width:480px;margin:0 auto}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.anim{animation:slideUp .3s ease forwards}
+
+/* Header */
+.hdr{background:linear-gradient(160deg,#1e2a50 0%,#2a3a70 100%);padding:52px 20px 20px;position:sticky;top:0;z-index:100}
+.hdr-inner{display:flex;align-items:center;gap:12px}
+.hdr-icon{font-size:2rem;line-height:1}
+.hdr-title{font-size:1.2rem;font-weight:800;color:#fff;letter-spacing:-.02em}
+.hdr-loc{font-size:.78rem;color:#a0b4e0;margin-top:2px;font-weight:500;min-height:1.2em}
+
+/* Sections */
+.section{padding:0 14px;margin-top:14px}
+.sec-label{font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;padding-left:2px}
+
+/* Map */
+.map-card{border-radius:16px;overflow:hidden;box-shadow:0 2px 12px #0002;position:relative;border:1.5px solid var(--border)}
+#map{width:100%;height:200px;transition:filter .3s}
+#map.loading{filter:brightness(.5)}
+#map-overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#0004;border-radius:16px}
+#map-overlay.show{display:flex}
+#map-overlay .sp{font-size:2rem;animation:spin 1s linear infinite}
+#map-overlay .msg{color:#fff;font-size:.85rem;font-weight:700}
+.map-hint{font-size:.72rem;color:var(--dim);text-align:center;margin-top:6px}
+
+/* Sliders */
+.slider-card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 2px 8px #0001;border:1.5px solid var(--border)}
+.slider-row{display:flex;flex-direction:column;gap:16px}
+.sl-item{display:flex;flex-direction:column;gap:6px}
+.sl-header{display:flex;justify-content:space-between;align-items:center}
+.sl-label{font-size:.88rem;font-weight:700;color:var(--text)}
+.sl-value{font-size:.95rem;font-weight:800;min-width:64px;text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:99px;outline:none;cursor:pointer;background:#d0d8ee}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;cursor:pointer;box-shadow:0 2px 8px #0003;border:3px solid #fff}
+
+/* Score chips */
+.score-bar{display:flex;gap:8px}
+.chip{flex:1;border-radius:12px;padding:10px 8px;text-align:center;border:2px solid;font-weight:700}
+.chip-go  {background:var(--green-bg);border-color:var(--success);color:var(--green)}
+.chip-warn{background:var(--amber-bg);border-color:var(--warn);color:var(--amber)}
+.chip-nogo{background:var(--red-bg);  border-color:var(--fail);  color:var(--red)}
+.chip-num{font-size:1.4rem;display:block;line-height:1}
+.chip-lbl{font-size:.63rem;display:block;margin-top:2px;letter-spacing:.04em;font-weight:700}
+
+/* Filter tabs */
+.tabs{display:flex;background:var(--card);border-radius:12px;padding:4px;gap:4px;border:1.5px solid var(--border)}
+.tab{flex:1;padding:10px 4px;border-radius:9px;text-align:center;font-size:.8rem;font-weight:700;color:var(--muted);border:none;background:transparent;cursor:pointer;transition:all .15s;font-family:inherit}
+.tab.active{background:var(--navy);color:#fff;box-shadow:0 2px 8px #0003}
+
+/* Day cards */
+.day-card{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 2px 8px #0001;border:1.5px solid var(--border);margin-bottom:10px}
+.day-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1.5px solid var(--border);cursor:pointer;user-select:none;-webkit-user-select:none}
+.day-header-left{display:flex;align-items:center;gap:10px}
+.day-name{font-size:1rem;font-weight:800;color:var(--navy)}
+.day-date{font-size:.75rem;color:var(--muted);font-weight:600;margin-top:1px}
+.day-dots{display:flex;gap:4px;align-items:center}
+.day-dot{width:12px;height:12px;border-radius:50%;border:2px solid}
+.chevron{font-size:1rem;color:var(--dim);transition:transform .2s;line-height:1}
+.chevron.open{transform:rotate(180deg)}
+.day-summary{font-size:.75rem;color:var(--muted);padding:8px 16px;background:var(--card2);border-bottom:1px solid var(--border);line-height:1.5;font-weight:500}
+.day-segs{display:none}
+.day-segs.open{display:block}
+
+/* Segment rows */
+.seg-row{display:grid;grid-template-columns:76px 1fr auto;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid #e8ecf8}
+.seg-row:last-child{border-bottom:none}
+.seg-time{font-size:.72rem;font-weight:700;color:var(--muted)}
+.seg-metrics{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg-val{font-size:.84rem;font-weight:700}
+.seg-unit{font-size:.7rem;font-weight:500;color:var(--muted)}
+.pill{display:inline-block;padding:5px 11px;border-radius:999px;font-weight:800;font-size:.75rem;white-space:nowrap;border:2px solid}
+.pgo  {background:var(--green-bg);color:var(--green);border-color:var(--success)}
+.pwarn{background:var(--amber-bg);color:var(--amber);border-color:var(--warn)}
+.pnogo{background:var(--red-bg);  color:var(--red);  border-color:var(--fail)}
+
+/* Loading */
+.loading-card{background:var(--card);border-radius:16px;padding:40px 20px;text-align:center;box-shadow:0 2px 8px #0001;border:1.5px solid var(--border)}
+.loading-sp{font-size:2.5rem;animation:spin 1.2s linear infinite;display:block;margin-bottom:12px}
+.loading-txt{font-size:.95rem;font-weight:700;color:var(--navy)}
+.loading-sub{font-size:.78rem;color:var(--muted);margin-top:6px;line-height:1.5}
+
+/* Error */
+.error-card{background:#fff0f2;border:2px solid var(--fail);border-radius:16px;padding:20px;font-size:.85rem;color:var(--red);line-height:1.7}
+.error-card small{color:#884;font-size:.78rem}
+
+/* Footer */
+.footer{text-align:center;font-size:.68rem;color:var(--dim);margin-top:16px;padding:0 4px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-inner">
+    <span class="hdr-icon">✈️</span>
+    <div>
+      <div class="hdr-title">RC Flying Forecast</div>
+      <div class="hdr-loc" id="hdr-loc">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="sec-label">📍 Location — tap map to change</div>
+  <div class="map-card">
+    <div id="map"></div>
+    <div id="map-overlay">
+      <span class="sp">🛰️</span>
+      <span class="msg" id="map-msg">Fetching forecast…</span>
+    </div>
+  </div>
+  <div class="map-hint">Tap anywhere on the map to get a forecast for that location</div>
+</div>
+
+<div class="section">
+  <div class="sec-label">⚙️ Your Thresholds</div>
+  <div class="slider-card">
+    <div class="slider-row">
+      <div class="sl-item">
+        <div class="sl-header">
+          <span class="sl-label">💨 Max Wind</span>
+          <span class="sl-value" id="wval" style="color:var(--blue)">10 mph</span>
+        </div>
+        <input type="range" id="wsl" min="3" max="20" step="1" value="10"/>
+      </div>
+      <div class="sl-item">
+        <div class="sl-header">
+          <span class="sl-label">🌡️ Min Temp</span>
+          <span class="sl-value" id="tval" style="color:var(--green)">10°C</span>
+        </div>
+        <input type="range" id="tsl" min="0" max="20" step="0.5" value="10"/>
+      </div>
+      <div class="sl-item">
+        <div class="sl-header">
+          <span class="sl-label">🌧️ Max Rain</span>
+          <span class="sl-value" id="rval" style="color:var(--amber)">0.0 mm</span>
+        </div>
+        <input type="range" id="rsl" min="0" max="5" step="0.1" value="0"/>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" id="score-sec" style="display:none">
+  <div class="score-bar">
+    <div class="chip chip-go">  <span class="chip-num" id="sgo">0</span>  <span class="chip-lbl">GO</span></div>
+    <div class="chip chip-warn"><span class="chip-num" id="swarn">0</span><span class="chip-lbl">MARGINAL</span></div>
+    <div class="chip chip-nogo"><span class="chip-num" id="snogo">0</span><span class="chip-lbl">NO GO</span></div>
+  </div>
+</div>
+
+<div class="section" id="filter-sec" style="display:none">
+  <div class="tabs">
+    <button class="tab active" data-f="all"  onclick="setFilter('all')">All Slots</button>
+    <button class="tab"        data-f="go"   onclick="setFilter('go')">✅ Flyable</button>
+    <button class="tab"        data-f="nogo" onclick="setFilter('nogo')">❌ No Go</button>
+  </div>
+</div>
+
+<div class="section" id="loading-sec">
+  <div class="loading-card">
+    <span class="loading-sp">🌤️</span>
+    <div class="loading-txt">Fetching forecast…</div>
+    <div class="loading-sub" id="loading-loc">Belper, Derbyshire</div>
+  </div>
+</div>
+
+<div class="section" id="err-sec" style="display:none">
+  <div class="error-card" id="err-msg"></div>
+</div>
+
+<div class="section" id="days-sec" style="display:none">
+  <div id="days-container"></div>
+  <div class="footer">Data: Open-Meteo (open-meteo.com) · Updated <span id="upd-lbl"></span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const SEGMENTS=[
+  {label:"00:00–06:00",hours:[0,1,2,3,4,5]},
+  {label:"06:00–12:00",hours:[6,7,8,9,10,11]},
+  {label:"12:00–18:00",hours:[12,13,14,15,16,17]},
+  {label:"18:00–24:00",hours:[18,19,20,21,22,23]},
+];
+
+let S={
+  lat:53.028, lon:-1.4696, name:"Belper, Derbyshire",
+  forecast:null, loading:false,
+  windLimit:10, tempMin:10, rainLimit:0, filter:"all"
+};
+
+const avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const sum=a=>a.reduce((s,v)=>s+v,0);
+const $=id=>document.getElementById(id);
+
+function degToCompass(d){
+  return["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d/22.5)%16];
+}
+function getStatus(seg){
+  const wf=seg.wind>=S.windLimit, tf=seg.temp<S.tempMin, rf=seg.rain>S.rainLimit;
+  if(!wf&&!tf&&!rf) return "go";
+  const n=[wf,tf,rf].filter(Boolean).length;
+  if(n===1&&((wf&&seg.wind<S.windLimit*1.3)||(tf&&seg.temp>S.tempMin-2)||(rf&&seg.rain<=S.rainLimit+0.5))) return "warn";
+  return "nogo";
+}
+
+// ── XHR helper — works on iOS Safari from file:// unlike fetch() ──────────────
+function xhrGet(url, timeoutMs){
+  timeoutMs = timeoutMs || 12000;
+  return new Promise(function(resolve, reject){
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.timeout = timeoutMs;
+    xhr.onload = function(){
+      if(xhr.status >= 200 && xhr.status < 300){
+        try{ resolve(JSON.parse(xhr.responseText)); }
+        catch(e){ reject(new Error("Could not parse response")); }
+      } else {
+        reject(new Error("Server error: HTTP " + xhr.status));
+      }
+    };
+    xhr.onerror   = function(){ reject(new Error("Network error — check your internet connection")); };
+    xhr.ontimeout = function(){ reject(new Error("Request timed out — check your connection")); };
+    xhr.send();
+  });
+}
+
+// ── Reverse geocode ───────────────────────────────────────────────────────────
+// No custom headers — avoids Safari CORS preflight failure on file://
+async function revGeo(lat, lon){
+  try{
+    var d = await xhrGet(
+      "https://nominatim.openstreetmap.org/reverse?lat="+lat+"&lon="+lon+"&format=json&accept-language=en",
+      5000
+    );
+    var a = d.address || {};
+    var town = a.town || a.city || a.village || a.hamlet || a.county || "Unknown";
+    var county = a.county || a.state || "";
+    return town + (county && town !== county ? ", " + county : "");
+  } catch(e){
+    return lat.toFixed(3) + ", " + lon.toFixed(3);
+  }
+}
+
+// ── Fetch weather ─────────────────────────────────────────────────────────────
+async function fetchWeather(lat, lon){
+  var url = "https://api.open-meteo.com/v1/forecast" +
+    "?latitude="  + lat.toFixed(4) +
+    "&longitude=" + lon.toFixed(4) +
+    "&hourly=temperature_2m,precipitation,windspeed_10m,winddirection_10m" +
+    "&wind_speed_unit=mph&forecast_days=10&timezone=auto";
+  return xhrGet(url, 12000);
+}
+
+// ── Process raw hourly → segments ─────────────────────────────────────────────
+function processWeather(raw){
+  var times  = raw.hourly.time;
+  var temps  = raw.hourly.temperature_2m;
+  var precip = raw.hourly.precipitation;
+  var winds  = raw.hourly.windspeed_10m;
+  var wdirs  = raw.hourly.winddirection_10m;
+
+  var byDate = {};
+  times.forEach(function(t, i){
+    var parts = t.split("T");
+    var date  = parts[0];
+    var hour  = parseInt(parts[1]);
+    if(!byDate[date]) byDate[date] = [];
+    byDate[date].push({hour:hour, temp:temps[i], rain:precip[i], wind:winds[i], windDir:wdirs[i]});
+  });
+
+  return Object.entries(byDate).slice(0,10).map(function(entry){
+    var date = entry[0];
+    var hrs  = entry[1];
+    var d    = new Date(date + "T12:00:00");
+    var weekday = d.toLocaleDateString("en-GB", {weekday:"long"});
+    var dateStr = d.getDate() + " " + d.toLocaleDateString("en-GB", {month:"short"}).toUpperCase();
+
+    var segs = SEGMENTS.map(function(seg){
+      var sl = hrs.filter(function(h){ return seg.hours.indexOf(h.hour) >= 0; });
+      if(!sl.length) return null;
+      return {
+        label:   seg.label,
+        wind:    Math.round(avg(sl.map(function(h){return h.wind;}))*10)/10,
+        windDir: Math.round(avg(sl.map(function(h){return h.windDir;}))),
+        temp:    Math.round(avg(sl.map(function(h){return h.temp;}))*10)/10,
+        rain:    Math.round(sum(sl.map(function(h){return h.rain;}))*10)/10,
+      };
+    }).filter(Boolean);
+
+    var maxW   = Math.max.apply(null, hrs.map(function(h){return h.wind;})).toFixed(0);
+    var avgT   = avg(hrs.map(function(h){return h.temp;})).toFixed(0);
+    var totalR = sum(hrs.map(function(h){return h.rain;})).toFixed(1);
+    var dirSet = [];
+    segs.forEach(function(s){
+      var c = degToCompass(s.windDir);
+      if(dirSet.indexOf(c)<0) dirSet.push(c);
+    });
+    var dirs = dirSet.slice(0,2).join("/");
+    var summary = dirs + " winds up to " + maxW + " mph. Avg " + avgT + "°C.";
+    if(+totalR === 0)       summary += " Dry.";
+    else if(+totalR < 2)    summary += " Light rain (" + totalR + "mm).";
+    else                    summary += " " + totalR + "mm rain expected.";
+
+    return {date:date, weekday:weekday, dateStr:dateStr, summary:summary, segments:segs};
+  });
+}
+
+// ── Load forecast ─────────────────────────────────────────────────────────────
+async function loadForecast(){
+  if(S.loading) return;
+  S.loading = true;
+  S.forecast = null;
+
+  $("hdr-loc").textContent = S.name;
+  $("loading-loc").textContent = S.name;
+  $("map-msg").textContent = "Fetching " + S.name + "…";
+  $("map").classList.add("loading");
+  $("map-overlay").classList.add("show");
+  $("loading-sec").style.display = "block";
+  $("days-sec").style.display    = "none";
+  $("score-sec").style.display   = "none";
+  $("filter-sec").style.display  = "none";
+  $("err-sec").style.display     = "none";
+
+  try {
+    var raw = await fetchWeather(S.lat, S.lon);
+    S.forecast = processWeather(raw);
+    $("upd-lbl").textContent = new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    $("hdr-loc").textContent = S.name + " · 10-day forecast";
+    if(marker) marker.setPopupContent("<b>" + S.name + "</b>");
+    render();
+    $("days-sec").style.display   = "block";
+    $("score-sec").style.display  = "block";
+    $("filter-sec").style.display = "block";
+  } catch(e) {
+    $("err-sec").style.display = "block";
+    $("err-msg").innerHTML =
+      "⚠️ <strong>Failed to load forecast</strong><br>" + e.message +
+      "<br><small>Make sure you have an internet connection. Open-Meteo is free and needs no API key.</small>";
+  } finally {
+    S.loading = false;
+    $("loading-sec").style.display = "none";
+    $("map").classList.remove("loading");
+    $("map-overlay").classList.remove("show");
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(){ renderScores(); renderDays(); }
+
+function renderScores(){
+  var all = S.forecast.flatMap(function(d){ return d.segments; });
+  var g   = all.filter(function(s){ return getStatus(s)==="go"; }).length;
+  var w   = all.filter(function(s){ return getStatus(s)==="warn"; }).length;
+  $("sgo").textContent   = g;
+  $("swarn").textContent = w;
+  $("snogo").textContent = all.length - g - w;
+}
+
+function renderDays(){
+  var c = $("days-container");
+  var openDates = new Set(
+    Array.from(c.querySelectorAll(".day-segs.open")).map(function(el){ return el.dataset.date; })
+  );
+  c.innerHTML = "";
+
+  S.forecast.forEach(function(day, di){
+    var segs = day.segments.slice();
+    if(S.filter==="go")   segs = segs.filter(function(s){ var st=getStatus(s); return st==="go"||st==="warn"; });
+    if(S.filter==="nogo") segs = segs.filter(function(s){ return getStatus(s)==="nogo"; });
+    if(!segs.length && S.filter!=="all") return;
+
+    var allSegs = day.segments;
+    var g = allSegs.filter(function(s){ return getStatus(s)==="go"; }).length;
+    var w = allSegs.filter(function(s){ return getStatus(s)==="warn"; }).length;
+    var barColor = g===4 ? "var(--success)" : g+w>=2 ? "var(--warn)" : "var(--fail)";
+
+    var dots = allSegs.map(function(seg){
+      var st = getStatus(seg);
+      var col = st==="go" ? "var(--success)" : st==="warn" ? "var(--warn)" : "var(--fail)";
+      return '<span class="day-dot" style="background:'+col+';border-color:'+col+'"></span>';
+    }).join("");
+
+    var segRows = segs.map(function(seg){
+      var st  = getStatus(seg);
+      var wf  = seg.wind >= S.windLimit;
+      var tf  = seg.temp < S.tempMin;
+      var rf  = seg.rain > S.rainLimit;
+      var pc  = st==="go" ? "pgo" : st==="warn" ? "pwarn" : "pnogo";
+      var pl  = st==="go" ? "GO"  : st==="warn" ? "MARGINAL" : "NO GO";
+      var wc  = wf ? "var(--red)"   : "var(--green)";
+      var tc  = tf ? "var(--red)"   : "var(--green)";
+      var rc  = rf ? "var(--amber)" : "var(--dim)";
+      var arrowDeg = (seg.windDir + 180) % 360;
+      var rainHtml = seg.rain > 0
+        ? '<span class="seg-val" style="color:'+rc+'">'+seg.rain.toFixed(1)+'</span><span class="seg-unit"> mm</span>'
+        : '<span style="color:var(--dim)">—</span>';
+      return '<div class="seg-row">'
+        + '<div class="seg-time">' + seg.label + '</div>'
+        + '<div class="seg-metrics">'
+        +   '<span><span class="seg-val" style="color:'+wc+'">'+ seg.wind +'</span>'
+        +   '<span class="seg-unit"> mph </span>'
+        +   '<span style="display:inline-block;transform:rotate('+arrowDeg+'deg)">↑</span>'
+        +   '<span style="font-size:.7rem;color:var(--dim);margin-left:2px">'+degToCompass(seg.windDir)+'</span></span>'
+        +   '<span><span class="seg-val" style="color:'+tc+'">'+seg.temp.toFixed(1)+'</span><span class="seg-unit">°C</span></span>'
+        +   '<span>'+rainHtml+'</span>'
+        + '</div>'
+        + '<div><span class="pill '+pc+'">'+pl+'</span></div>'
+        + '</div>';
+    }).join("");
+
+    var isOpen = di === 0 || openDates.has(day.date);
+    var card   = document.createElement("div");
+    card.className = "day-card anim";
+    card.style.animationDelay = (di*30) + "ms";
+    card.style.borderLeft = "4px solid " + barColor;
+    card.innerHTML =
+      '<div class="day-header" onclick="toggleDay(this)">'
+      +  '<div class="day-header-left">'
+      +    '<div>'
+      +      '<div class="day-name">'+ day.weekday +'</div>'
+      +      '<div class="day-date">'+ day.dateStr +'</div>'
+      +    '</div>'
+      +    '<div class="day-dots">'+ dots +'</div>'
+      +  '</div>'
+      +  '<span class="chevron '+(isOpen?"open":"")+'">▾</span>'
+      + '</div>'
+      + '<div class="day-summary">'+ day.summary +'</div>'
+      + '<div class="day-segs '+(isOpen?"open":"") +'" data-date="'+day.date+'">'+ segRows +'</div>';
+    c.appendChild(card);
+  });
+}
+
+function toggleDay(hdr){
+  var segs  = hdr.parentElement.querySelector(".day-segs");
+  var chev  = hdr.querySelector(".chevron");
+  var open  = segs.classList.toggle("open");
+  chev.classList.toggle("open", open);
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function setFilter(f){
+  S.filter = f;
+  document.querySelectorAll(".tab").forEach(function(b){
+    b.classList.toggle("active", b.dataset.f === f);
+  });
+  if(S.forecast) render();
+}
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+function updateSliderTrack(el, color){
+  var pct = (el.value - el.min) / (el.max - el.min) * 100;
+  el.style.background = "linear-gradient(to right," + color + " " + pct + "%,#d0d8ee " + pct + "%)";
+  el.style.setProperty("--thumb", color);
+}
+
+var thumbStyle = document.createElement("style");
+thumbStyle.textContent = "input[type=range]::-webkit-slider-thumb{background:var(--thumb,#2255cc)}";
+document.head.appendChild(thumbStyle);
+
+$("wsl").addEventListener("input", function(e){
+  S.windLimit = +e.target.value;
+  $("wval").textContent = S.windLimit + " mph";
+  updateSliderTrack(e.target, "#2255cc");
+  if(S.forecast) render();
+});
+$("tsl").addEventListener("input", function(e){
+  S.tempMin = +e.target.value;
+  $("tval").textContent = S.tempMin + "°C";
+  updateSliderTrack(e.target, "#007a30");
+  if(S.forecast) render();
+});
+$("rsl").addEventListener("input", function(e){
+  S.rainLimit = +e.target.value;
+  $("rval").textContent = (+e.target.value).toFixed(1) + " mm";
+  updateSliderTrack(e.target, "#b86000");
+  if(S.forecast) render();
+});
+
+// Initialise slider tracks
+updateSliderTrack($("wsl"), "#2255cc");
+updateSliderTrack($("tsl"), "#007a30");
+updateSliderTrack($("rsl"), "#b86000");
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+var map, marker;
+
+window.addEventListener("load", function(){
+  map = L.map("map", {zoomControl:false, attributionControl:false, tap:true})
+         .setView([S.lat, S.lon], 8);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:18}).addTo(map);
+
+  var icon = L.divIcon({
+    className: "",
+    html: '<div style="width:22px;height:22px;background:#2255cc;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 10px #2255cc88"></div>',
+    iconAnchor: [11,11]
+  });
+
+  marker = L.marker([S.lat, S.lon], {icon:icon})
+             .addTo(map)
+             .bindPopup("<b>" + S.name + "</b>")
+             .openPopup();
+
+  map.on("click", async function(e){
+    if(S.loading) return;
+    S.lat = e.latlng.lat;
+    S.lon = e.latlng.lng;
+    marker.setLatLng([S.lat, S.lon]);
+    S.name = await revGeo(S.lat, S.lon);
+    loadForecast();
+  });
+
+  loadForecast();
+});
+</script>
+</body>
+</html>
