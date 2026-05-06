@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RC Flying Go/No-Go • Ashbourne, Derbyshire</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        .go-green { background-color: #22c55e; color: black; }
+        .go-amber { background-color: #eab308; color: black; }
+        .go-red { background-color: #ef4444; color: white; }
+        .cell { transition: all 0.3s; }
+        table td, table th { padding: 12px; text-align: center; vertical-align: middle; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="max-w-7xl mx-auto p-6">
+        <h1 class="text-4xl font-bold text-center mb-2">RC Aeroplane Go/No-Go</h1>
+        <p class="text-center text-xl mb-6" id="location">Ashbourne, Derbyshire • Next 10 Days (6am–9pm)</p>
+
+        <!-- Controls -->
+        <div class="bg-gray-800 rounded-xl p-6 mb-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div>
+                <label class="block text-sm mb-2">Max Wind Speed: <span id="windVal" class="font-bold">10</span> mph</label>
+                <input type="range" id="windSlider" min="5" max="25" value="10" class="w-full accent-green-500">
+            </div>
+            <div>
+                <label class="block text-sm mb-2">Min Temperature: <span id="tempVal" class="font-bold">10</span> °C</label>
+                <input type="range" id="tempSlider" min="0" max="20" value="10" class="w-full accent-green-500">
+            </div>
+            <div>
+                <label class="block text-sm mb-2">Max Rain Chance: <span id="rainVal" class="font-bold">20</span> %</label>
+                <input type="range" id="rainSlider" min="0" max="100" value="20" class="w-full accent-green-500">
+            </div>
+            <div class="flex items-end">
+                <button onclick="resetSliders()" 
+                        class="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg w-full">
+                    Reset to Default
+                </button>
+            </div>
+        </div>
+
+        <!-- Map -->
+        <div class="mb-8">
+            <div id="map" class="h-80 rounded-2xl shadow-xl"></div>
+            <p class="text-xs text-gray-400 text-center mt-2">Click anywhere on the map to change location (demo)</p>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm" id="flyingTable">
+                <thead>
+                    <tr class="bg-gray-800">
+                        <th class="sticky left-0 bg-gray-800 z-10">Date / Time</th>
+                        <th>06:00–09:00</th>
+                        <th>09:00–12:00</th>
+                        <th>12:00–15:00</th>
+                        <th>15:00–18:00</th>
+                        <th>18:00–21:00</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="text-center"></tbody>
+            </table>
+        </div>
+
+        <div class="mt-8 flex flex-wrap gap-6 justify-center text-sm">
+            <div class="flex items-center gap-2"><div class="w-5 h-5 bg-green-500 rounded"></div> Green = Good to fly</div>
+            <div class="flex items-center gap-2"><div class="w-5 h-5 bg-yellow-500 rounded"></div> Amber = Marginal</div>
+            <div class="flex items-center gap-2"><div class="w-5 h-5 bg-red-500 rounded"></div> Red = No-Go</div>
+        </div>
+    </div>
+
+    <script>
+        // Sample forecast data (you can update these values)
+        const forecastData = [
+            {
+                date: "Wed 6 May",
+                slots: [
+                    {temp: 7, wind: 8, dir: "NE", rain: 5, score: 5},
+                    {temp: 10, wind: 8, dir: "NE", rain: 5, score: 9},
+                    {temp: 12, wind: 7, dir: "NE", rain: 10, score: 9},
+                    {temp: 11, wind: 6, dir: "NE", rain: 15, score: 8},
+                    {temp: 9, wind: 6, dir: "E", rain: 5, score: 6}
+                ]
+            },
+            {
+                date: "Thu 7 May",
+                slots: [
+                    {temp: 6, wind: 4, dir: "E", rain: 10, score: 5},
+                    {temp: 10, wind: 5, dir: "S", rain: 15, score: 8},
+                    {temp: 13, wind: 6, dir: "S", rain: 20, score: 8},
+                    {temp: 14, wind: 6, dir: "S", rain: 30, score: 6},
+                    {temp: 12, wind: 5, dir: "S", rain: 30, score: 6}
+                ]
+            },
+            {
+                date: "Fri 8 May",
+                slots: [
+                    {temp: 8, wind: 4, dir: "SE", rain: 25, score: 5},
+                    {temp: 12, wind: 5, dir: "SE", rain: 25, score: 7},
+                    {temp: 15, wind: 6, dir: "SE", rain: 45, score: 4},
+                    {temp: 15, wind: 5, dir: "SE", rain: 55, score: 3},
+                    {temp: 13, wind: 4, dir: "SE", rain: 45, score: 4}
+                ]
+            },
+            {
+                date: "Sat 9 May",
+                slots: [
+                    {temp: 9, wind: 5, dir: "NE", rain: 25, score: 6},
+                    {temp: 13, wind: 7, dir: "NE", rain: 25, score: 7},
+                    {temp: 16, wind: 9, dir: "NE", rain: 35, score: 5},
+                    {temp: 16, wind: 10, dir: "NE", rain: 45, score: 3},
+                    {temp: 14, wind: 11, dir: "NE", rain: 45, score: 3}
+                ]
+            },
+            {
+                date: "Sun 10 May",
+                slots: [
+                    {temp: 10, wind: 12, dir: "NE", rain: 35, score: 3},
+                    {temp: 12, wind: 13, dir: "NE", rain: 35, score: 2},
+                    {temp: 14, wind: 12, dir: "NE", rain: 35, score: 3},
+                    {temp: 13, wind: 12, dir: "NE", rain: 35, score: 3},
+                    {temp: 11, wind: 11, dir: "NE", rain: 30, score: 3}
+                ]
+            },
+            {
+                date: "Mon 11 May",
+                slots: [
+                    {temp: 8, wind: 9, dir: "N", rain: 25, score: 4},
+                    {temp: 10, wind: 10, dir: "N", rain: 30, score: 4},
+                    {temp: 12, wind: 10, dir: "N", rain: 30, score: 3},
+                    {temp: 12, wind: 9, dir: "N", rain: 25, score: 4},
+                    {temp: 9, wind: 8, dir: "N", rain: 20, score: 5}
+                ]
+            }
+        ];
+
+        function getStatus(temp, wind, rain, maxWind, minTemp, maxRain) {
+            let score = 10;
+            let status = "go-green";
+            let emoji = "🟢";
+
+            if (wind > maxWind) { score -= 5; status = "go-red"; emoji = "🔴"; }
+            if (temp < minTemp) { score -= 4; if (status !== "go-red") status = "go-amber"; emoji = "🟡"; }
+            if (rain > maxRain) { score -= 4; if (status !== "go-red") status = "go-amber"; emoji = "🟡"; }
+
+            score = Math.max(1, Math.min(10, score));
+            return { status, emoji, score };
+        }
+
+        function renderTable(maxWind = 10, minTemp = 10, maxRain = 20) {
+            const tbody = document.getElementById("tableBody");
+            tbody.innerHTML = "";
+
+            forecastData.forEach(day => {
+                const row = document.createElement("tr");
+                row.className = "border-b border-gray-700 hover:bg-gray-800";
+
+                let html = `<td class="sticky left-0 bg-gray-800 font-semibold">${day.date}</td>`;
+
+                day.slots.forEach(slot => {
+                    const result = getStatus(slot.temp, slot.wind, slot.rain, maxWind, minTemp, maxRain);
+                    html += `
+                        <td class="cell ${result.status} font-medium">
+                            <div class="text-xs opacity-90">${slot.temp}°C | ${slot.wind} mph ${slot.dir}</div>
+                            <div class="text-xs opacity-75">${slot.rain}% rain</div>
+                            <div class="mt-1 text-lg">${result.emoji}</div>
+                            <div class="text-xs font-bold">${result.score}/10</div>
+                        </td>
+                    `;
+                });
+
+                row.innerHTML = html;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateValues() {
+            const wind = parseInt(document.getElementById("windSlider").value);
+            const temp = parseInt(document.getElementById("tempSlider").value);
+            const rain = parseInt(document.getElementById("rainSlider").value);
+
+            document.getElementById("windVal").textContent = wind;
+            document.getElementById("tempVal").textContent = temp;
+            document.getElementById("rainVal").textContent = rain;
+
+            renderTable(wind, temp, rain);
+        }
+
+        function resetSliders() {
+            document.getElementById("windSlider").value = 10;
+            document.getElementById("tempSlider").value = 10;
+            document.getElementById("rainSlider").value = 20;
+            updateValues();
+        }
+
+        // Initialize
+        window.onload = function() {
+            // Tailwind script already loaded
+            renderTable();
+
+            // Slider listeners
+            document.getElementById("windSlider").addEventListener("input", updateValues);
+            document.getElementById("tempSlider").addEventListener("input", updateValues);
+            document.getElementById("rainSlider").addEventListener("input", updateValues);
+
+            // Leaflet Map
+            const map = L.map('map').setView([53.018, -1.728], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Marker for Ashbourne
+            L.marker([53.018, -1.728]).addTo(map)
+                .bindPopup("<b>Ashbourne, Derbyshire</b><br>Default flying location")
+                .openPopup();
+
+            // Click to "change location" (demo)
+            map.on('click', function(e) {
+                alert("Location changed to new coordinates!\n\nIn a full version this would reload weather data.");
+            });
+        };
+    </script>
+</body>
+</html>
